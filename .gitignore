@@ -1,0 +1,34 @@
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+
+# Local Shadertoy library and SQLite sidecars
+*.sqlite
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+*.db
+
+# JavaScript and Python caches
+node_modules/
+.validation/
+__pycache__/
+*.py[cod]
+
+# Local reports, archives, and temporary files
+coverage/
+dist/
+local-data/
+imports/
+catalog-export*.json
+*.zip
+*.tmp
+*.log
+
+# Editor and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+Desktop.ini

@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "shadertoy-netease": {
+      "command": "node",
+      "args": [
+        "./mcp/src/mcp-server.mjs"
+      ],
+      "cwd": ".",
+      "env_vars": [
+        "CODEX_HOME",
+        "SHADERTOY_API_KEY",
+        "SHADERTOY_DATA_DIR"
+      ],
+      "tool_timeout_sec": 120
+    }
+  }
+}

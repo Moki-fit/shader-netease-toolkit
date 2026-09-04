@@ -1,0 +1,39 @@
+{
+  "name": "shadertoy-netease-toolkit",
+  "version": "0.1.0",
+  "description": "Portable Shadertoy analysis and NetEase Minecraft shader-porting workflows for Codex.",
+  "author": {
+    "name": "Moki-fit",
+    "url": "https://github.com/Moki-fit"
+  },
+  "homepage": "https://github.com/Moki-fit/shadertoy-netease-toolkit",
+  "repository": "https://github.com/Moki-fit/shadertoy-netease-toolkit",
+  "license": "Proprietary",
+  "keywords": [
+    "shadertoy",
+    "netease-minecraft",
+    "glsl",
+    "mcp",
+    "shader-porting"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Shadertoy to NetEase Toolkit",
+    "shortDescription": "Analyze shaders and plan safe NetEase ports",
+    "longDescription": "Study Shadertoy-style GLSL effects, preserve source and license provenance, inspect the real NetEase Minecraft render route, and use a local cached library to analyze or rank feasible porting candidates.",
+    "developerName": "Moki-fit",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/Moki-fit/shadertoy-netease-toolkit",
+    "defaultPrompt": [
+      "Use $port-shadertoy-to-netease to analyze this shader for NetEase Minecraft.",
+      "Find similar cached effects and rank the safest NetEase porting candidates.",
+      "Review this shader port without claiming unverified in-game compatibility."
+    ]
+  }
+}

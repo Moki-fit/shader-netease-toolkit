@@ -1,0 +1,32 @@
+{
+  "Shader": {
+    "ver": "0.1",
+    "info": {
+      "id": "AbC123",
+      "date": "1788278400",
+      "viewed": 12,
+      "name": "Synthetic Hex Pulse",
+      "username": "local-fixture",
+      "description": "Synthetic fixture for local end-to-end validation.",
+      "likes": 2,
+      "published": 3,
+      "flags": 0,
+      "tags": ["hexagon", "pulse", "synthetic"]
+    },
+    "renderpass": [
+      {
+        "inputs": [],
+        "outputs": [
+          {
+            "id": 37,
+            "channel": 0
+          }
+        ],
+        "code": "// SPDX-License-Identifier: MIT\nvoid mainImage(out vec4 color, in vec2 fragCoord) {\n  vec2 uv = fragCoord / iResolution.xy;\n  color = vec4(uv, 0.5 + 0.5 * sin(iTime), 1.0);\n}\n",
+        "name": "Image",
+        "description": "Synthetic single-pass image.",
+        "type": "image"
+      }
+    ]
+  }
+}

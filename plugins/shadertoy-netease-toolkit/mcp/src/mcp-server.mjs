@@ -11,7 +11,7 @@ import {
 export const MCP_PROTOCOL_VERSION = '2025-06-18';
 export const SERVER_INFO = Object.freeze({
   name: 'shadertoy-netease-mcp',
-  version: '0.1.0',
+  version: '0.2.0',
 });
 
 // Requests may carry a 2 MiB UTF-8 GLSL source. JSON escaping can materially

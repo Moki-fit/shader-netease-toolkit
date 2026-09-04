@@ -1,44 +1,101 @@
-# Shadertoy-to-NetEase MCP
+# Federated Shader Sources to NetEase MCP
 
-This is a local, dependency-free Node 24 MCP server and CLI for a cached Shadertoy library plus conservative NetEase porting analysis. It uses the public Shadertoy API only; do not use it to bypass access controls or copy work without the author's applicable permission/license.
+This plugin contains two local, dependency-free Node 24 stdio MCP servers. Both
+use built-in Node facilities, including `node:sqlite`; install Node.js **24 or
+newer** before starting either service.
 
-The server returns author, canonical source URL, license status, and `Shadertoy API` attribution with project reads. It does not accept arbitrary remote URLs, local paths, or SQL over MCP. Cached project source is omitted by default; a caller can request only one explicit, bounded pass window.
+| Server | Start command from plugin root | Purpose |
+| --- | --- | --- |
+| `shadertoy-netease` | `node ./mcp/src/mcp-server.mjs` | Backward-compatible Shadertoy official-API cache, search, source inventory and NetEase candidate ranking. |
+| `shader-source-registry` | `node ./mcp/src/sources/source-mcp-server.mjs` | Source-policy registry for URL resolution, provenance-aware local records, authorized source analysis and bounded compliant indexing. |
 
-Set an API key only through the environment of the launched process:
+Do not start a stdio MCP through `npm start` or another lifecycle wrapper that
+can write a banner to stdout. The server consumes and emits UTF-8 JSON-RPC,
+one object per line; stdout is reserved for protocol data.
+
+## Source-registry tools
+
+| Tool | Use |
+| --- | --- |
+| `shader_source_registry_status` | Inspect registered providers, cache state and supported maintenance actions. |
+| `resolve_shader_source_url` | Validate a user URL against the provider allowlist and return a canonical source reference without arbitrary fetching. |
+| `search_shader_sources` | Search the local federated cache by text, provider or resource kind. |
+| `get_shader_source_record` | Read a known provider/resource record and its provenance without assuming source is reusable. |
+| `import_shader_link` | Register one authorized exact allowlisted link; the caller supplies an auditable authorization basis. |
+| `sync_shader_source_step` | Perform one explicit bounded maintenance step: networked only for `isf`/`webgl-fundamentals`, or zero-network link-only seed for `book-of-shaders`. |
+| `analyze_shader_source` | Perform conservative, provider-neutral static inventory of authorized source text. |
+
+The accepted sources are Shadertoy, the official ISF library, twigl.app, The
+Book of Shaders, ShaderFrog, Godot Shaders and WebGL Fundamentals. The service
+does not crawl those sites. twigl user-work licenses are unknown. For an
+explicit `ol=true&ss=<id>` share link, only caller authorization of
+`user-owned`, `licensed`, or `author-permission` permits one bounded request to
+the fixed experimental Firebase snapshot endpoint; `reference-only` and
+`repository-license` stay zero-network and record only a link/metadata. The
+service never enumerates twigl channels or directories. ShaderFrog remains a
+manual `user-supplied-source-analysis` boundary and needs work-specific
+permission/license review. A Godot Shaders canonical `/shader/<slug>/` link has
+a two-stage per-work gate. `reference-only` and `repository-license` request
+only that page and store page evidence/metadata; they never call
+`/wp-json/shader_data/shader/<postId>` and cannot receive a final reusable-source
+classification before the source header has been checked. Only `user-owned`,
+`licensed`, or `author-permission` plus one supported, unambiguous license
+(CC0, MIT, or GPLv3) scoped to the target article may request the fixed detail
+endpoint. Source caching additionally requires exactly one matching supported
+license in the leading source header. A missing, restrictive, composite, or
+conflicting header blocks caching and remains `review_required`. The service
+never crawls Godot directories or media. The Book of Shaders stays link-only: its offline
+seed can index built-in original topic links but cannot fetch/cache chapter text.
+Only official ISF and eligible official WebGL Fundamentals BSD course material
+can be indexed through a networked automatic step.
+
+`sync_shader_source_step` argument examples:
+
+```json
+{ "provider": "isf", "limit": 10 }
+{ "provider": "webgl-fundamentals", "limit": 10 }
+{ "provider": "book-of-shaders", "limit": 10 }
+```
+
+The first two may use the fixed official GitHub REST providers; the final form
+only seeds link-only metadata locally and makes no network request.
+
+## Existing Shadertoy tools
+
+The original `shadertoy-netease` API stays available: `shadertoy_library_status`,
+`search_shadertoy_library`, `get_shadertoy_project`,
+`refresh_shadertoy_project`, `sync_shadertoy_catalog_step`,
+`analyze_shadertoy_source`, and `rank_netease_candidates`.
+
+Set an optional Shadertoy key only through the launched process environment:
 
 ```powershell
 $env:SHADERTOY_API_KEY = 'your-key'
 node src/mcp-server.mjs
 ```
 
-Without that variable, local search/read/analysis continue to work and refresh/sync return structured `auth_required` results. Data uses `SHADERTOY_DATA_DIR` when explicitly set; otherwise it uses `%CODEX_HOME%\data\shadertoy-netease`, then `%USERPROFILE%\.codex\data\shadertoy-netease` (or `HOME`), then the current-directory fallback. The selected data directory is created automatically on first local request.
+Without it, the local registry and legacy local search/read/analysis continue
+to work; legacy remote Shadertoy refresh/sync returns structured
+`auth_required` results.
 
-The stdio server consumes and emits one UTF-8 JSON-RPC object per line. Its stdout is reserved for protocol messages; operational logs use stderr. Start the MCP endpoint only with `node src/mcp-server.mjs`; do not use `npm start` or another npm lifecycle wrapper for stdio, because its banner output corrupts the protocol stream. Requests are capped at 8 MiB at the line-framing boundary (the submitted GLSL source remains separately capped at 2 MiB UTF-8), and complete JSON-RPC responses are capped at 1 MiB.
+For explicit ISF or WebGL Fundamentals maintenance through the official GitHub
+REST API, an optional `GITHUB_TOKEN` can raise GitHub's public-read rate limit.
+Set it only in the launched process environment; the MCP never stores, returns
+or logs the token. Without a token, eligible public reads remain possible under
+GitHub's lower unauthenticated rate limit.
 
-## Official API scope and maintenance expectations
+## Content and local storage
 
-As checked on 2026-09-02, Shadertoy states that Silver or Gold accounts can request an API key through [My Apps](https://www.shadertoy.com/myapps), and its [How-to/API guidance](https://www.shadertoy.com/howto) limits ordinary API access to 1,500 requests per month and shaders marked `Public + API`. This service uses only that official API surface and preserves the returned attribution/license metadata; it does not scrape private or non-API content.
+The service rejects arbitrary remote URLs, local paths and SQL. It does not
+bypass login, robots, rate limits, user visibility or other access controls.
+Use it only with content you are authorized to disclose to the connected
+Codex/MCP client. Imported source, explicit source windows, analysis output and
+SQLite cache content can enter that client context.
 
-`sync --full` is resumable, budgeted maintenance, not a promise that every remote record will finish in one invocation. It defaults to at most 100 logical catalog/detail operations per CLI run; `--max-operations N` sets a strict 1..1500 per-run ceiling. A non-resume full sync reserves one logical operation for the ID-only catalog listing, and each valid project-detail fetch reserves one more. `sync --full --resume` skips the catalog listing and spends its budget only on pending project-detail fetches.
-
-`--limit` remains the project-fetch batch size, not the total operation budget. The CLI never starts a fetch batch larger than the remaining `--max-operations` budget. When pending work remains after the budget is exhausted, the JSON result is a structured `partial` / `operation_budget_exhausted` response with `progress.budget`, `progress.consumed`, `progress.remaining`, and `progress.resumable`; rerun with `sync --full --resume` and an explicit operation budget to continue.
-
-This is a per-run logical-operation ceiling, not an HTTP-attempt or monthly-allowance meter. API-client retries and other use of the same API key can consume more official allowance than these counted catalog/detail operations. Operators must choose `--max-operations` based on their Shadertoy account's remaining API allowance. The local scheduler deliberately spaces calls conservatively; that local pacing is an implementation choice, not a claimed official per-second API allowance.
-
-The CLI program itself writes JSON:
-
-```powershell
-npm test
-node src/cli.mjs init
-node src/cli.mjs status
-node src/cli.mjs search "volumetric" --limit 10
-node src/cli.mjs get Xds3zN
-node src/cli.mjs get Xds3zN --include-source --pass-index 0 --source-offset 0 --max-chars 4096
-node src/cli.mjs refresh Xds3zN
-node src/cli.mjs sync --limit 10
-node src/cli.mjs sync --full --limit 10 --max-operations 100
-node src/cli.mjs sync --full --resume --limit 10 --max-operations 100
-node src/cli.mjs import-json "$env:TEMP\catalog-export.json"
-```
-
-`sync --full` first refreshes the ID-only official catalog, then drains bounded project-fetch steps at no more than 0.5 API calls per second by default. If a full run is interrupted, reaches its logical-operation budget, or has pending records, `sync --full --resume` continues those local pending records without another catalog request. `import-json` is intentionally a CLI-only operation and requires an explicit local JSON file path outside the repository. Import only source that you are authorized to disclose to the connected MCP client; an explicit `include_source` request can return a bounded source window.
+The legacy service uses `SHADERTOY_DATA_DIR` when explicitly set; otherwise it
+uses `%CODEX_HOME%\data\shadertoy-netease`, then the user's Codex data
+directory. The v0.2 registry uses `SHADER_SOURCE_DATA_DIR` first for its
+separate `resources-v2.sqlite3`, then falls back to the legacy directory rule.
+Keep data, cache sidecars and source exports outside the repository. Source is
+not distributed by this plugin; preserve author, canonical URL, license evidence
+and required attribution with every adaptation.

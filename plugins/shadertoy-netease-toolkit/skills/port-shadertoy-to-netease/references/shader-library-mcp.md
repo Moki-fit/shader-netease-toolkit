@@ -1,31 +1,53 @@
-# Shadertoy Library MCP
+# Federated Shader Library and Source Registry MCP
 
-Use the connected Shadertoy library as the first source for discovery and project retrieval. Treat its records as evidence about known projects; do not treat them as proof that a NetEase render route exists or as in-game validation.
+The plugin ships two independent local MCP servers. A cached source record is
+evidence about provenance and local availability, not proof of copyright
+permission, a valid NetEase route or in-game compatibility.
 
-## Choose a Tool
+## Source registry first
+
+Use `shader-source-registry` for every non-empty URL before opening it in a
+browser. Its provider allowlist and URL parser are a safety and licensing
+boundary, not a convenience check.
+
+| Need | Tool | Required interpretation |
+| --- | --- | --- |
+| See providers, cache state and allowed maintenance | `shader_source_registry_status` | Provider capability is not a permission grant. |
+| Classify a supplied URL | `resolve_shader_source_url` | Use only its canonical URL/provider; unsupported URL means no arbitrary fetch. |
+| Find locally indexed shaders or learning references | `search_shader_sources` | Search results may be metadata-only or link-only. |
+| Inspect known provenance/license metadata | `get_shader_source_record` | Do not request/copy source unless its policy and authority permit it. |
+| Register an exact authorized link | `import_shader_link` | The caller must supply an auditable authorization basis. |
+| Do one approved maintenance step | `sync_shader_source_step` | Networked only for `isf`/`webgl-fundamentals`; `book-of-shaders` is a zero-network link-only seed. All forms are explicitly bounded. |
+| Inventory authorized source text | `analyze_shader_source` | Conservative text analysis, not a compiler or target compatibility proof. |
+
+Source policy details are in
+[provider-source-policy.md](provider-source-policy.md).
+
+## Retained Shadertoy library
+
+The legacy `shadertoy-netease` server remains compatible:
 
 | Need | Tool | Follow-up |
 | --- | --- | --- |
-| Diagnose library availability or authentication | `shadertoy_library_status` | Treat `auth_required` as a boundary; use a fallback if credentials are unavailable. |
-| Find an effect with similar visual behavior | `search_shadertoy_library` | Use `rank_netease_candidates` to prioritize candidates that fit the verified target route. |
-| Rank already known candidates for a verified target route | `rank_netease_candidates` | Treat the score as a local heuristic; inspect the selected project before implementation. |
-| Retrieve a known URL or project | `get_shadertoy_project` | On a miss, refresh only when status confirms usable authentication, then retrieve again. |
-| Retrieve a known project absent from the local catalog | `refresh_shadertoy_project` | Keep the request limited to that project; do not turn it into a catalog sync. |
-| Inspect retrieved or user-provided shader source | `analyze_shadertoy_source` | Treat findings as inventory, not GLSL compilation or target compatibility proof. |
-| Improve a catalog under an explicit bounded request | `sync_shadertoy_catalog_step` | State the bound and stop at the step result. |
+| Diagnose library/authentication | `shadertoy_library_status` | Treat `auth_required` as a boundary. |
+| Find similar Shadertoy effects | `search_shadertoy_library` | Compare only after target-route verification. |
+| Rank known Shadertoy candidates | `rank_netease_candidates` | Score is a local heuristic, not approval. |
+| Retrieve a known project | `get_shadertoy_project` | On miss, refresh only with usable authentication. |
+| Retrieve an absent known project | `refresh_shadertoy_project` | Keep request to that project; do not expand to sync. |
+| Inventory Shadertoy source | `analyze_shadertoy_source` | Prefer generic analysis for multi-provider workflows. |
+| Bounded catalog maintenance | `sync_shadertoy_catalog_step` | Never make it an implicit porting action. |
 
-For a similar-effect request, search before browsing. For an exact URL, get before checking status or refreshing. If the MCP is unavailable, status is `auth_required`, or a refresh cannot be performed, use a normal browser or user-provided source instead.
+When a Shadertoy remote action is explicitly requested, use only its official
+Public + API path. Configure `SHADERTOY_API_KEY` in the MCP process environment,
+never in an AddOn, Skill, artifact or source-control file. Respect current
+account eligibility/quota and use a bounded operation; do not scrape projects
+outside the official API surface.
 
-Do not bypass login, API, rate-limit, robots, or other access controls. Configure `SHADERTOY_API_KEY` only in the MCP service environment; never place a key in an AddOn, Skill, output artifact, or source-control file.
+## Fallbacks and evidence
 
-## Catalog Scope
-
-Keep `sync_shadertoy_catalog_step` as the only in-task synchronization action and bound it deliberately. Reserve a full catalog sync for an operator-controlled CLI operation, never an implicit action of a porting, analysis, or review request. If the user explicitly authorizes that operational work, use the deployment's current CLI full-sync workflow and help rather than preserving a command here.
-
-Before an initial full sync, re-check the current account eligibility and quota on the official [Shadertoy API page](https://www.shadertoy.com/howto#q2). As verified on 2026-09-02, API keys require Silver or Gold status and API use is limited to 1500 requests per month. Treat a full sync as resumable, quota-aware catalog maintenance; never promise that every remote project will be fetched in one run. Only `Public + API` projects are in scope.
-
-## License and Source Citation
-
-Before copying or closely translating shader code, inspect the project and license status. Honor an explicit project license when one is declared. Only when no explicit license is declared should the Shadertoy default CC BY-NC-SA-3.0 be recorded. Any use of the Shadertoy API also requires Shadertoy API attribution.
-
-In the delivery, identify the project URL or identifier, title and author when available, acquisition path (local library, refreshed API result, browser, or user-provided), license status, and required attribution. If source or license evidence is incomplete, limit the work to analysis, feasibility, or an independently written look-alike.
+If a server is unavailable, use a normal browser or user-provided source only
+within the provider's stated boundary. Do not bypass login, rate limits, robots,
+visibility, paywalls or other access controls. Report acquisition path (registry,
+legacy library, browser or user-provided), canonical source URL, author when
+known, license evidence and required attribution. If evidence is incomplete,
+limit work to analysis, feasibility or independently written look-alike design.

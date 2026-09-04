@@ -1,7 +1,7 @@
 {
   "name": "shadertoy-netease-toolkit",
-  "version": "0.1.0",
-  "description": "Portable Shadertoy analysis and NetEase Minecraft shader-porting workflows for Codex.",
+  "version": "0.2.0",
+  "description": "Federated shader-source analysis, learning, and NetEase Minecraft porting workflows for Codex.",
   "author": {
     "name": "Moki-fit",
     "url": "https://github.com/Moki-fit"
@@ -11,17 +11,24 @@
   "license": "Proprietary",
   "keywords": [
     "shadertoy",
+    "isf",
+    "twigl",
+    "shaderfrog",
+    "godot-shaders",
+    "webgl-fundamentals",
     "netease-minecraft",
     "glsl",
     "mcp",
-    "shader-porting"
+    "shader-porting",
+    "shader-learning",
+    "source-provenance"
   ],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
-    "displayName": "Shadertoy to NetEase Toolkit",
-    "shortDescription": "Analyze shaders and plan safe NetEase ports",
-    "longDescription": "Study Shadertoy-style GLSL effects, preserve source and license provenance, inspect the real NetEase Minecraft render route, and use a local cached library to analyze or rank feasible porting candidates.",
+    "displayName": "Shader Sources to NetEase Toolkit",
+    "shortDescription": "Study approved shaders and plan verified NetEase ports",
+    "longDescription": "Resolve policy-approved Shadertoy, ISF, twigl, Book of Shaders, ShaderFrog, Godot Shaders, and WebGL Fundamentals references; preserve provenance and license evidence; analyze authorized source; and plan a verified NetEase Minecraft port without crawling or bypassing access controls.",
     "developerName": "Moki-fit",
     "category": "Developer Tools",
     "capabilities": [
@@ -31,8 +38,8 @@
     ],
     "websiteURL": "https://github.com/Moki-fit/shadertoy-netease-toolkit",
     "defaultPrompt": [
-      "Use $port-shadertoy-to-netease to analyze this shader for NetEase Minecraft.",
-      "Find similar cached effects and rank the safest NetEase porting candidates.",
+      "Use $port-shadertoy-to-netease to resolve this shader URL and assess a NetEase Minecraft port.",
+      "Search approved cached shader and graphics-learning sources for this effect idea.",
       "Review this shader port without claiming unverified in-game compatibility."
     ]
   }

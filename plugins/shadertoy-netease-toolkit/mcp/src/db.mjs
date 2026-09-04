@@ -2,9 +2,16 @@ import { DatabaseSync } from 'node:sqlite';
 import { gzipSync, gunzipSync } from 'node:zlib';
 
 import { ANALYZER_VERSION, analyzeProject, assertProjectSourceSize, normalizeProject } from './analyzer.mjs';
-import { combineLicenseResults, detectLicense, detectLicenseFromSourceHeader, hasLicenseDeclaration } from './license.mjs';
+import {
+  combineLicenseResults,
+  detectLicense,
+  detectLicenseFromSourceHeader,
+  hasLicenseDeclaration,
+  isLegacyImplicitDefaultLicense,
+} from './license.mjs';
 
 const SCHEMA_VERSION = 1;
+const LICENSE_POLICY_VERSION = 2;
 const DEFAULT_BUSY_TIMEOUT_MS = 5_000;
 
 const SCHEMA_SQL = `
@@ -353,6 +360,125 @@ function resolveProjectLicense(project, normalized, rawPayload) {
   return detectLicense();
 }
 
+function storedPassesForLicense(db, shaderId) {
+  return db
+    .prepare('SELECT pass_index, pass_id, name, type, description, code FROM passes WHERE shader_id = ? ORDER BY pass_index')
+    .all(shaderId)
+    .map((row) => ({
+      index: Number(row.pass_index),
+      id: row.pass_id ?? '',
+      name: row.name,
+      type: row.type,
+      description: row.description,
+      code: row.code,
+      inputs: [],
+      outputs: [],
+    }));
+}
+
+function storedProjectPasses(db, shaderId) {
+  const passes = db
+    .prepare('SELECT * FROM passes WHERE shader_id = ? ORDER BY pass_index')
+    .all(shaderId)
+    .map((row) => ({
+      index: Number(row.pass_index),
+      id: row.pass_id ?? '',
+      name: row.name,
+      type: row.type,
+      description: row.description,
+      code: row.code,
+      inputs: [],
+      outputs: [],
+    }));
+  const passByIndex = new Map(passes.map((pass) => [pass.index, pass]));
+  for (const row of db.prepare('SELECT * FROM inputs WHERE shader_id = ? ORDER BY pass_index, input_index').all(shaderId)) {
+    const pass = passByIndex.get(Number(row.pass_index));
+    if (pass) {
+      pass.inputs.push(parseJson(row.raw_json, {
+        channel: row.channel,
+        id: row.input_id,
+        ctype: row.input_type,
+        src: row.source_ref,
+      }));
+    }
+  }
+  for (const row of db.prepare('SELECT * FROM outputs WHERE shader_id = ? ORDER BY pass_index, output_index').all(shaderId)) {
+    const pass = passByIndex.get(Number(row.pass_index));
+    if (pass) {
+      pass.outputs.push(parseJson(row.raw_json, {
+        id: row.output_id,
+        ctype: row.output_type,
+        name: row.output_name,
+      }));
+    }
+  }
+  return passes;
+}
+
+function sameBlob(left, right) {
+  return Buffer.from(left ?? []).equals(Buffer.from(right ?? []));
+}
+
+function sameLicenseShaderSnapshot(expected, current) {
+  return Boolean(current)
+    && expected.shader_id === current.shader_id
+    && expected.license_spdx === current.license_spdx
+    && expected.license_json === current.license_json
+    && expected.source_json === current.source_json
+    && Number(expected.source_bytes) === Number(current.source_bytes)
+    && sameBlob(expected.raw_json_gzip, current.raw_json_gzip);
+}
+
+function sameLicensePassSnapshot(expected, current) {
+  if (!Array.isArray(expected) || !Array.isArray(current) || expected.length !== current.length) {
+    return false;
+  }
+  return expected.every((pass, index) => {
+    const candidate = current[index];
+    return candidate
+      && pass.index === candidate.index
+      && pass.id === candidate.id
+      && pass.name === candidate.name
+      && pass.type === candidate.type
+      && pass.description === candidate.description
+      && pass.code === candidate.code;
+  });
+}
+
+function reclassifyStoredImplicitDefault(shader, passes) {
+  const storedLicense = parseJson(shader.license_json, null);
+  if (!isLegacyImplicitDefaultLicense(storedLicense, shader.license_spdx)) {
+    return {
+      license: storedLicense && typeof storedLicense === 'object' && !Array.isArray(storedLicense)
+        ? storedLicense
+        : detectLicense(),
+      reclassified: false,
+    };
+  }
+
+  const rawPayload = gunzipJson(shader.raw_json_gzip, null);
+  const project = {
+    id: shader.shader_id,
+    title: shader.title,
+    author: shader.author,
+    description: shader.description,
+    tags: parseJson(shader.tags_json, []),
+    publishedAt: shader.published_at,
+    updatedAt: shader.updated_at,
+    viewed: Number(shader.viewed),
+    likes: Number(shader.likes),
+    source: parseJson(shader.source_json, {}),
+    renderpasses: passes,
+  };
+  // The persisted canonical fields give the resolver the exact leading source
+  // text.  Raw payload remains a separate authority for original metadata.
+  const normalized = { ...project, license: undefined };
+  return {
+    license: resolveProjectLicense(project, normalized, rawPayload),
+    reclassified: true,
+  };
+}
+
 /**
  * Small, parameterized local library store.  Its public surface deliberately
  * contains no generic SQL execution or per-call filesystem paths.
@@ -397,10 +523,36 @@ export class LibraryStore {
     }
   }
 
+  #readTransaction(work) {
+    this.#assertOpen();
+    // A deferred transaction holds one coherent SQLite read snapshot across
+    // shader metadata, raw payload, passes, and license JSON. It is committed
+    // before any best-effort CAS write so a response never mixes generations.
+    this.db.exec('BEGIN');
+    try {
+      const result = work();
+      this.db.exec('COMMIT');
+      return result;
+    } catch (error) {
+      try {
+        this.db.exec('ROLLBACK');
+      } catch {
+        // Preserve the original read failure; a failed rollback has no safer
+        // recovery path on this synchronous, short-lived transaction.
+      }
+      throw error;
+    }
+  }
+
   #migrate() {
     this.db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL)');
     const versionRow = this.db.prepare('SELECT value FROM meta WHERE key = ?').get('schema_version');
     const currentVersion = versionRow ? Number(versionRow.value) : 0;
+    const licensePolicyRow = this.db.prepare('SELECT value FROM meta WHERE key = ?').get('license_policy_version');
+    const parsedLicensePolicyVersion = licensePolicyRow ? Number(licensePolicyRow.value) : 0;
+    const currentLicensePolicyVersion = Number.isInteger(parsedLicensePolicyVersion) && parsedLicensePolicyVersion >= 0
+      ? parsedLicensePolicyVersion
+      : 0;
     if (!Number.isInteger(currentVersion) || currentVersion < 0) {
       throw new Error('Database schema_version is invalid.');
     }
@@ -409,6 +561,15 @@ export class LibraryStore {
     }
     this.#transaction(() => {
       this.db.exec(SCHEMA_SQL);
+      if (currentLicensePolicyVersion < LICENSE_POLICY_VERSION) {
+        this.#reclassifyLegacyImplicitLicenses();
+        this.db
+          .prepare(
+            `INSERT INTO meta(key, value) VALUES (?, ?)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+          )
+          .run('license_policy_version', String(LICENSE_POLICY_VERSION));
+      }
       this.db
         .prepare(
           `INSERT INTO meta(key, value) VALUES (?, ?)
@@ -422,6 +583,109 @@ export class LibraryStore {
         )
         .run('schema_updated_at', now());
     });
+  }
+
+  #reclassifyLegacyImplicitLicenses() {
+    const rows = this.db.prepare('SELECT shader_id FROM shaders').all();
+    for (const shader of rows) {
+      const current = this.db.prepare('SELECT * FROM shaders WHERE shader_id = ?').get(shader.shader_id);
+      if (!current) {
+        continue;
+      }
+      const storedLicense = parseJson(current.license_json, null);
+      if (isLegacyImplicitDefaultLicense(storedLicense, current.license_spdx)) {
+        const passes = storedPassesForLicense(this.db, current.shader_id);
+        const resolution = reclassifyStoredImplicitDefault(current, passes);
+        this.#persistSnapshotLicense(current, passes, resolution, true);
+      }
+    }
+  }
+
+  #readProjectSnapshot(id) {
+    return this.#readTransaction(() => {
+      const shader = this.db.prepare('SELECT * FROM shaders WHERE shader_id = ?').get(id);
+      if (!shader) {
+        return null;
+      }
+      const passes = storedProjectPasses(this.db, id);
+      const analysisRow = this.db.prepare('SELECT * FROM analyses WHERE shader_id = ?').get(id);
+      return {
+        shader,
+        passes,
+        analysisRow,
+        analysis: analysisRow ? parseJson(analysisRow.report_json, null) : null,
+        rawPayload: gunzipJson(shader.raw_json_gzip, null),
+        source: parseJson(shader.source_json, {}),
+      };
+    });
+  }
+
+  #readSearchSnapshots(match, limit, offset) {
+    return this.#readTransaction(() => {
+      const rows = this.db
+        .prepare(
+          `SELECT s.shader_id, s.title, s.author, s.description, s.tags_json, s.updated_at, s.license_spdx,
+                  bm25(shaders_fts) AS score
+           FROM shaders_fts
+           JOIN shaders AS s ON s.shader_id = shaders_fts.shader_id
+           WHERE shaders_fts MATCH ?
+           ORDER BY score, s.shader_id
+           LIMIT ? OFFSET ?`,
+        )
+        .all(match, limit, offset);
+      return rows.map((row) => {
+        const shader = this.db.prepare('SELECT * FROM shaders WHERE shader_id = ?').get(row.shader_id);
+        const storedLicense = shader ? parseJson(shader.license_json, null) : null;
+        return {
+          row,
+          shader,
+          passes: shader && isLegacyImplicitDefaultLicense(storedLicense, shader.license_spdx)
+            ? storedPassesForLicense(this.db, row.shader_id)
+            : null,
+        };
+      });
+    });
+  }
+
+  #persistSnapshotLicense(shader, passes, resolution, transactionOpen = false) {
+    if (!shader || !resolution?.reclassified) {
+      return false;
+    }
+    const persist = () => {
+      // Re-check every source input under the write lock. Raw payload covers
+      // metadata while this pass comparison covers header evidence when an
+      // older writer changes code without changing its raw envelope.
+      const current = this.db.prepare('SELECT * FROM shaders WHERE shader_id = ?').get(shader.shader_id);
+      if (!sameLicenseShaderSnapshot(shader, current)) {
+        return false;
+      }
+      const currentPasses = storedPassesForLicense(this.db, shader.shader_id);
+      if (!sameLicensePassSnapshot(passes, currentPasses)) {
+        return false;
+      }
+      const updated = this.db
+        .prepare(
+          `UPDATE shaders
+           SET license_spdx = ?, license_json = ?
+           WHERE shader_id = ?
+             AND license_spdx = ?
+             AND license_json = ?
+             AND raw_json_gzip = ?`,
+        )
+        .run(
+          resolution.license.spdx,
+          json(resolution.license),
+          shader.shader_id,
+          shader.license_spdx,
+          shader.license_json,
+          shader.raw_json_gzip,
+        );
+      return Number(updated.changes) > 0;
+    };
+    // Response paths commit their read snapshot before entering this short
+    // write transaction. Startup migration already owns BEGIN IMMEDIATE and
+    // passes transactionOpen=true, avoiding a nested transaction.
+    return transactionOpen ? persist() : this.#transaction(persist);
   }
 
   close() {
@@ -786,49 +1050,20 @@ export class LibraryStore {
   getProject(shaderId) {
     this.#assertOpen();
     const id = toId(shaderId);
-    const shader = this.db.prepare('SELECT * FROM shaders WHERE shader_id = ?').get(id);
-    if (!shader) {
+    const snapshot = this.#readProjectSnapshot(id);
+    if (!snapshot) {
       return null;
     }
-    const passes = this.db
-      .prepare('SELECT * FROM passes WHERE shader_id = ? ORDER BY pass_index')
-      .all(id)
-      .map((row) => ({
-        index: Number(row.pass_index),
-        id: row.pass_id ?? '',
-        name: row.name,
-        type: row.type,
-        description: row.description,
-        code: row.code,
-        inputs: [],
-        outputs: [],
-      }));
-    const passByIndex = new Map(passes.map((pass) => [pass.index, pass]));
-    for (const row of this.db.prepare('SELECT * FROM inputs WHERE shader_id = ? ORDER BY pass_index, input_index').all(id)) {
-      const pass = passByIndex.get(Number(row.pass_index));
-      if (pass) {
-        pass.inputs.push(parseJson(row.raw_json, {
-          channel: row.channel,
-          id: row.input_id,
-          ctype: row.input_type,
-          src: row.source_ref,
-        }));
-      }
-    }
-    for (const row of this.db.prepare('SELECT * FROM outputs WHERE shader_id = ? ORDER BY pass_index, output_index').all(id)) {
-      const pass = passByIndex.get(Number(row.pass_index));
-      if (pass) {
-        pass.outputs.push(parseJson(row.raw_json, {
-          id: row.output_id,
-          ctype: row.output_type,
-          name: row.output_name,
-        }));
-      }
-    }
-    const analysisRow = this.db.prepare('SELECT * FROM analyses WHERE shader_id = ?').get(id);
-    const analysis = analysisRow ? parseJson(analysisRow.report_json, null) : null;
-    const rawPayload = gunzipJson(shader.raw_json_gzip, null);
-    const source = parseJson(shader.source_json, {});
+    const {
+      shader,
+      passes,
+      analysisRow,
+      analysis,
+      rawPayload,
+      source,
+    } = snapshot;
+    const licenseResolution = reclassifyStoredImplicitDefault(shader, passes);
+    this.#persistSnapshotLicense(shader, passes, licenseResolution);
     const project = {
       id: shader.shader_id,
       title: shader.title,
@@ -841,7 +1076,7 @@ export class LibraryStore {
       likes: Number(shader.likes),
       source,
       renderpasses: passes,
-      license: parseJson(shader.license_json, detectLicense()),
+      license: licenseResolution.license,
       sourceBytes: Number(shader.source_bytes),
       createdAt: shader.created_at,
       storedAt: shader.stored_at,
@@ -863,27 +1098,23 @@ export class LibraryStore {
     const settings = typeof options === 'number' ? { limit: options } : asObject(options);
     const limit = clampInteger(settings.limit, 20, 1, 100);
     const offset = clampInteger(settings.offset, 0, 0, 10_000);
-    const rows = this.db
-      .prepare(
-        `SELECT s.shader_id, s.title, s.author, s.description, s.tags_json, s.updated_at, s.license_spdx,
-                bm25(shaders_fts) AS score
-         FROM shaders_fts
-         JOIN shaders AS s ON s.shader_id = shaders_fts.shader_id
-         WHERE shaders_fts MATCH ?
-         ORDER BY score, s.shader_id
-         LIMIT ? OFFSET ?`,
-      )
-      .all(match, limit, offset);
-    return rows.map((row) => ({
-      id: row.shader_id,
-      title: row.title,
-      author: row.author,
-      description: row.description,
-      tags: parseJson(row.tags_json, []),
-      updatedAt: row.updated_at,
-      licenseSpdx: row.license_spdx,
-      score: Number(row.score),
-    }));
+    const snapshots = this.#readSearchSnapshots(match, limit, offset);
+    return snapshots.map(({ row, shader, passes }) => {
+      const licenseResolution = shader
+        ? reclassifyStoredImplicitDefault(shader, passes)
+        : null;
+      this.#persistSnapshotLicense(shader, passes, licenseResolution);
+      return {
+        id: row.shader_id,
+        title: row.title,
+        author: row.author,
+        description: row.description,
+        tags: parseJson(row.tags_json, []),
+        updatedAt: row.updated_at,
+        licenseSpdx: licenseResolution?.license.spdx ?? row.license_spdx,
+        score: Number(row.score),
+      };
+    });
   }
 }
 

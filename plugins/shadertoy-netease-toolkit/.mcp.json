@@ -12,6 +12,20 @@
         "SHADERTOY_DATA_DIR"
       ],
       "tool_timeout_sec": 120
+    },
+    "shader-source-registry": {
+      "command": "node",
+      "args": [
+        "./mcp/src/sources/source-mcp-server.mjs"
+      ],
+      "cwd": ".",
+      "env_vars": [
+        "CODEX_HOME",
+        "SHADER_SOURCE_DATA_DIR",
+        "SHADERTOY_DATA_DIR",
+        "GITHUB_TOKEN"
+      ],
+      "tool_timeout_sec": 120
     }
   }
 }

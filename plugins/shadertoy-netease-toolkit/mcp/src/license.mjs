@@ -15,15 +15,6 @@ export const LICENSE_DISCLAIMER =
 // 2 MiB source limit before it reaches this helper.
 export const MAX_LICENSE_HEADER_BYTES = 16 * 1024;
 
-const DEFAULT_SHADERTOY_LICENSE = {
-  spdx: 'CC-BY-NC-SA-3.0',
-  name: 'Creative Commons Attribution-NonCommercial-ShareAlike 3.0 Unported',
-  commercial: 'restricted',
-  adaptation: 'allowed-with-share-alike',
-  attribution: 'required',
-  shareAlike: true,
-};
-
 function definition(spdx, name, commercial, adaptation, attribution = 'required', shareAlike = false) {
   return { spdx, name, commercial, adaptation, attribution, shareAlike };
 }
@@ -101,7 +92,8 @@ function resultFromKnown(known, text, source, match = known.spdx) {
     attribution: known.attribution,
     shareAlike: known.shareAlike,
     review: false,
-    status: source === 'default' ? 'default' : 'classified',
+    review_required: false,
+    status: 'classified',
     disclaimer: LICENSE_DISCLAIMER,
   };
 }
@@ -118,11 +110,65 @@ function reviewResult({ spdx = 'LicenseRef-Unrecognized', name, source = 'declar
     attribution: 'unknown',
     shareAlike: false,
     review: true,
+    review_required: true,
     status: 'review',
     conflicts,
     licenses,
     disclaimer: LICENSE_DISCLAIMER,
   };
+}
+
+function missingLicenseResult() {
+  return {
+    spdx: 'LicenseRef-Unknown',
+    identifier: 'LicenseRef-Unknown',
+    name: 'No explicit license declaration found',
+    source: 'missing',
+    evidence: [
+      {
+        kind: 'missing-license-declaration',
+        text: 'No explicit project metadata or supported leading source-header license declaration was found.',
+        match: 'review-required',
+      },
+    ],
+    commercial: 'unknown',
+    adaptation: 'unknown',
+    attribution: 'unknown',
+    shareAlike: false,
+    review: true,
+    review_required: true,
+    status: 'review_required',
+    conflicts: [],
+    licenses: [],
+    disclaimer: LICENSE_DISCLAIMER,
+  };
+}
+
+/**
+ * Identify records written by the legacy implicit-default policy.  This is
+ * deliberately narrower than "has the old SPDX id": an explicit metadata or
+ * leading-header classification using that same license remains authoritative.
+ */
+export function isLegacyImplicitDefaultLicense(value, storedSpdx = undefined) {
+  const license = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const evidence = Array.isArray(license.evidence) ? license.evidence : [];
+  const source = typeof license.source === 'string' ? license.source : '';
+  const status = typeof license.status === 'string' ? license.status : '';
+  const spdx = typeof license.spdx === 'string'
+    ? license.spdx
+    : typeof storedSpdx === 'string'
+      ? storedSpdx
+      : '';
+  const hasExplicitProvenance = ['declared', 'declared-license', 'metadata', 'source-header'].includes(source)
+    || evidence.some((entry) => {
+      const kind = entry && typeof entry === 'object' && typeof entry.kind === 'string' ? entry.kind : '';
+      return kind && kind !== 'default-policy' && kind !== 'missing-license-declaration';
+    });
+
+  return status === 'default'
+    || source === 'default'
+    || evidence.some((entry) => entry && typeof entry === 'object' && entry.kind === 'default-policy')
+    || (spdx === 'CC-BY-NC-SA-3.0' && !hasExplicitProvenance);
 }
 
 function addMatch(matches, spdx, match) {
@@ -182,19 +228,14 @@ function findKnownLicenses(text) {
 
 /**
  * Classify a declared license string without claiming to interpret legal terms.
- * An absent declaration deliberately falls back to Shadertoy's historical
- * default CC-BY-NC-SA-3.0 metadata. Explicit but unsupported, composite, or
- * conflicting declarations remain review-required instead of falling back.
+ * An absent declaration remains an unknown, review-required classification.
+ * Explicit but unsupported, composite, or conflicting declarations also
+ * remain review-required instead of inheriting a service-level default.
  */
 export function detectLicense(declaration) {
   const text = textFromLicense(declaration);
   if (!text) {
-    return resultFromKnown(
-      DEFAULT_SHADERTOY_LICENSE,
-      'No project-specific license declaration was supplied; using the Shadertoy default CC-BY-NC-SA-3.0 classification.',
-      'default',
-      'Shadertoy default',
-    );
+    return missingLicenseResult();
   }
 
   const known = findKnownLicenses(text);

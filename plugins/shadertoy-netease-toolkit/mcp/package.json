@@ -1,8 +1,8 @@
 {
   "name": "shadertoy-netease-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "Local Shadertoy library and NetEase porting analysis MCP server",
+  "description": "Local federated shader-source registry and NetEase porting analysis MCP servers",
   "type": "module",
   "engines": {
     "node": ">=24"

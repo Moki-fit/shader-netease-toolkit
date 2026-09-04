@@ -1,77 +1,78 @@
-# Shadertoy → NetEase Minecraft Toolkit
+# Federated Shader Sources → NetEase Minecraft Toolkit
 
-这是一个可移植的 Codex 插件仓库，把以下两部分一起分发：
+这是一个可移植的 Codex 插件仓库。它将 `$port-shadertoy-to-netease` Skill 与两个本地、stdio MCP 服务一起分发，用于把经过授权的 shader 或图形知识资料，审慎地学习、分析并移植到网易《我的世界》AddOn。
 
-- `port-shadertoy-to-netease` Skill：按规范分析 Shadertoy 或类似 GLSL 效果，先确认真实渲染入口、通道和许可证，再规划或实现网易《我的世界》移植。
-- `shadertoy-netease` MCP：本地缓存、检索、源码静态分析和网易适配候选排序；只有显式刷新或同步时才访问 Shadertoy 官方 Public + API 接口。
+- `shadertoy-netease` 保留既有的 Shadertoy 官方 API 本地库、检索、静态分析和网易适配候选排序能力。
+- `shader-source-registry` 以来源策略为边界，识别受支持 URL、维护合规的本地索引、记录许可与出处，并分析用户获准提供的通用 shader 源码。
 
-它不是全站 HTML 爬虫，也不会绕过登录、作品可见性、API 配额或其他访问控制。仓库不包含 API Key、SQLite 数据库、已缓存作品源码或本机 Codex 配置。
+“学习”在本工具中是按需检索、受限缓存、结构化分析和从资料提炼原创实现思路；它不是对模型进行训练，也不表示本仓库获得了任何第三方作品的再分发权。
 
-## 目录结构
+本工具不是全站 HTML 爬虫，不会绕过登录、robots、可见性、限流、付费墙或其他访问控制。仓库不包含 API Key、SQLite 数据库、已缓存的第三方源码或本机 Codex 配置。
 
-```text
-.agents/plugins/marketplace.json
-plugins/shadertoy-netease-toolkit/
-├─ .codex-plugin/plugin.json
-├─ .mcp.json
-├─ skills/port-shadertoy-to-netease/
-└─ mcp/
-```
+## 受支持来源与边界
+
+| 来源 | 用途与访问边界 | 自动化范围 |
+| --- | --- | --- |
+| Shadertoy | 既有官方 `Public + API` 工作流；具体作品仍以作者许可为准 | 仅显式、配额受限的官方 API 刷新/同步 |
+| ISF 标准库 | Vidvox 官方 `ISF-Files` 标准库文件 | 仅官方库的分步索引；保留上游 MIT 许可与声明 |
+| twigl.app | URL 内显式源码，或 `ol=true&ss=<id>` 玩家分享链接 | 玩家作品许可未知。仅在 `user-owned`、`licensed` 或 `author-permission` 授权基础下，对固定实验性 Firebase snapshot 端点作一次有界请求；`reference-only` / `repository-license` 全程零网络且只存链接/元数据；绝不枚举频道或目录 |
+| The Book of Shaders（含中文） | 图形知识与算法学习 | 仅链接/章节引用，禁止缓存页面正文；可零网络播种内置原创主题链接索引 |
+| ShaderFrog | 单个 editor 链接或用户导出的源码 | 不爬站、不自动抓取作品；仅进行用户提供源码的 `user-supplied-source-analysis`，先由用户提供获授权内容 |
+| Godot Shaders | 规范的单个 `/shader/<slug>/` 作品链接 | `reference-only` / `repository-license` 只请求页面、存页面证据/元数据，绝不请求 detail API，未核验源码头前不得给最终可复用分类；仅 `user-owned` / `licensed` / `author-permission` 且目标文章含单一受支持 CC0/MIT/GPLv3 时，才请求固定 detail API；缓存还要求领先源码头恰好声明一个相同许可，缺失、限制语、混合或冲突均禁止缓存且 `review_required`；绝不爬目录或媒体 |
+| WebGL Fundamentals | 官方 BSD-3-Clause 课程资料 | 仅官方仓库 lessons Markdown 的受限全文本地索引；排除第三方目录、资源与图片 |
+
+在没有另行、可审计的 work-specific authority（例如 `user-owned`、明确许可或作者授权）时，未知、缺失或互相矛盾的许可不会被视作可复制、可缓存或可分发。此时只能给出链接、可行性说明或独立原创的 look-alike 方案。
 
 ## 环境要求
 
-- Codex / ChatGPT 桌面版中支持本地或仓库 marketplace 的版本
-- Node.js 24 或更高版本（MCP 使用内置 `node:sqlite`，没有第三方 npm 运行时依赖）
-- Python 3（仅在直接运行 Skill 自带的离线分析器时需要；已用 Python 3.12 验证，不会进入网易 AddOn）
-- 只有刷新和同步官方数据时才需要 `SHADERTOY_API_KEY`
+- 支持本地或仓库 marketplace 的 Codex / ChatGPT 桌面版。
+- Node.js 24 或更高版本；两个 MCP 都依赖内置 `node:sqlite`，没有第三方 npm 运行时依赖。
+- Python 3 仅用于直接运行 Skill 附带的离线分析器。
+- `SHADERTOY_API_KEY` 仅在主动调用既有 Shadertoy 官方刷新/同步时需要。
 
 ## 伴随 Skills
 
-本仓库只分发本项目拥有的主 Skill 与 MCP，不复制具有独立发布周期或来源的伴随 Skills。要严格执行完整移植工作流，请从你信任的 Skill 来源另行安装：
+本仓库只分发自己的 `port-shadertoy-to-netease` Skill 与两个 MCP；下列伴随 Skills 不随包复制，也不会因本插件安装而自动获得。
 
-- 每次 shader 移植都需要：`glsl-fundamentals`
-- 查证网易入口、API 和资源格式需要：`mc-search`、`netease-docs`
-- 按实际目标条件使用：`glsl-coordinates`、`glsl-math`、`glsl-color`、`glsl-noise`、`glsl-sdf`、`netease-mc-ui-skill`、`mod-workflow`、`netease-python-addon-rules`、`mcdk-game-test-workflow`、`multi-agent-orchestration`
+**必需（实际 shader 端口/审查时）：** `glsl-fundamentals`。缺失时仍可登记来源或进行有限文本分析，但不能把结果称为完整 GLSL 移植审查。
 
-缺少伴随 Skill 时，本包的本地库、源码分析和 intake 工作仍可运行，但不得声称已完成相应的网易接口查证、GLSL 专项审查或游戏内验证。当前作者机器已单独全局安装这些伴随 Skills；它们不是本仓库内容。
+**必需（要声称网易接口、资源入口或 API 已查证时）：** `mc-search` 与 `netease-docs`。缺失时只可标注待核实，不能编造目标版本接口。
 
-## 从 GitHub 安装
+**按需可选：** `glsl-coordinates`、`glsl-math`、`glsl-color`、`glsl-noise`、`glsl-sdf`、`netease-mc-ui-skill`、`mod-workflow`、`netease-python-addon-rules`、`mcdk-game-test-workflow` 和 `multi-agent-orchestration`。
 
-当前发布采用专有许可证，因此 GitHub 仓库应保持私有；安装者需要先以获授权的 GitHub 账号登录。
+若 `netease-mc-ui-skill` 不可用，则不要编辑 UI JSON 或 `shaders/glsl` 下的 UI shader；若 `mcdk-game-test-workflow` 不可用，则静态检查不等同于 MCDK 或游戏内验收。伴随 Skill 的安装方式由使用者信任的 Skill 来源决定。
+
+## 安装
+
+此仓库采用专有许可，应保持为私有仓库；安装者需要使用已获授权的 GitHub 账号。
 
 ```powershell
 codex plugin marketplace add Moki-fit/shadertoy-netease-toolkit --ref main
 codex plugin add shadertoy-netease-toolkit@moki-fit-tools
 ```
 
-也可以在 Codex / ChatGPT 桌面版的插件目录中选择 `Moki Fit Shader Tools` 并安装。安装或更新后，请新建一个任务验证 Skill 和 MCP 是否被发现。
-
-## 从本地目录安装
+从已检出的本地仓库安装时，用路径占位符，不依赖某个开发机盘符：
 
 ```powershell
 codex plugin marketplace add '<repository-path>'
 codex plugin add shadertoy-netease-toolkit@moki-fit-tools
 ```
 
-插件内 MCP 使用 `cwd: "."` 与相对入口 `./mcp/src/mcp-server.mjs`，不会绑定某个用户目录或磁盘盘符。
+更新后请新建一个 Codex 任务，再确认 Skill 与两个 MCP 服务是否已发现。
 
-## 可选的 Shadertoy API Key
+## 可选 Shadertoy API Key
 
-从 Shadertoy 官方 My Apps 页面取得 Key 后，只通过启动 Codex 的进程环境设置：
+只通过启动 Codex 的进程环境配置 Key：
 
 ```powershell
 $env:SHADERTOY_API_KEY = '<your-key>'
 ```
 
-不要把 Key 写进 `.mcp.json`、Skill、AddOn、提交记录或聊天内容。未设置 Key 时，本地分析、搜索和读取仍可使用；远程刷新与同步会返回结构化 `auth_required`。
+不要把 Key 写入 `.mcp.json`、Skill、AddOn、提交记录或聊天内容。没有 Key 时，本地检索、来源解析和离线分析仍可用；既有 Shadertoy 远程刷新/同步会返回结构化 `auth_required` 结果。
 
-marketplace 使用 `ON_USE`，因为安装和离线功能不需要身份凭据，只有用户主动调用官方刷新/同步时才需要可选 API Key。
+## MCP 工具概览
 
-CLI 的 `import-json` 只能用于你有权交给当前 Codex/MCP 客户端处理的源码。项目源码默认不返回，但显式使用 `include_source` 和有界窗口时，所选源码片段会进入连接客户端的上下文；不要导入未经授权的私有作品。
-
-默认数据库位于 `%CODEX_HOME%\data\shadertoy-netease`；也可用 `SHADERTOY_DATA_DIR` 指定仓库外目录。数据库、WAL/SHM 文件和环境文件均已被 `.gitignore` 排除。
-
-## MCP 工具
+`shadertoy-netease`（兼容保留）：
 
 - `shadertoy_library_status`
 - `search_shadertoy_library`
@@ -81,20 +82,33 @@ CLI 的 `import-json` 只能用于你有权交给当前 Codex/MCP 客户端处�
 - `analyze_shadertoy_source`
 - `rank_netease_candidates`
 
+`shader-source-registry`（v0.2）：
+
+- `shader_source_registry_status`
+- `resolve_shader_source_url`
+- `search_shader_sources`
+- `get_shader_source_record`
+- `import_shader_link`
+- `sync_shader_source_step`
+- `analyze_shader_source`
+
+新服务始终先把 URL 解析为受支持来源与规范链接；它不接受任意远程 URL、任意本地路径或 SQL。`sync_shader_source_step` 的**联网**维护只允许 `provider: "isf"` 或 `provider: "webgl-fundamentals"`；`provider: "book-of-shaders"` 只能零网络播种内置原创主题的链接索引，永不缓存章节正文。所有同步都必须是用户显式、有限的维护动作。
+
+## 数据、源码与许可
+
+既有 Shadertoy 库默认位于 `%CODEX_HOME%\data\shadertoy-netease`，可通过 `SHADERTOY_DATA_DIR` 指向仓库外目录。v0.2 来源注册表优先使用 `SHADER_SOURCE_DATA_DIR` 存放独立的 `resources-v2.sqlite3`，未设置时才回退到既有目录规则。任何导入、缓存和导出都应位于仓库外，不应进入 Git。
+
+只交给 MCP 处理你明确获准提供的内容。源码默认不返回，但显式请求的有界源码窗口、导入源码和本地缓存都可能进入连接的 MCP/Codex 上下文。不要导入私有、付费、受 NDA 保护或没有授权的作品。
+
+交付时保留作者、规范 URL、来源、许可依据和所需署名。各来源的细则见 [NOTICE.md](NOTICE.md)、[SECURITY.md](SECURITY.md) 与 Skill 的 `provider-source-policy.md`。
+
 ## 开发与验证
 
 ```powershell
 Set-Location .\plugins\shadertoy-netease-toolkit\mcp
 npm.cmd test
 node .\src\mcp-server.mjs
+node .\src\sources\source-mcp-server.mjs
 ```
 
-stdio MCP 必须直接使用 `node` 启动；不要通过 `npm start`，否则 npm 的横幅可能污染 JSON-RPC stdout。
-
-静态分析结果不等于 GLSL 编译、网易 MCDK 测试或游戏内验收。对具体 AddOn 的实现仍需核实目标版本、真实资源入口、客户端/服务端边界以及设备性能。
-
-## 来源、许可与商标
-
-工具不会随仓库分发第三方 shader。通过官方 API 缓存的每个作品仍受作者声明的许可证和 Shadertoy 条款约束；使用者必须保留作者、作品 ID、规范 URL 和许可信息。详见 [Shadertoy How-to](https://www.shadertoy.com/howto)、[Shadertoy Terms](https://www.shadertoy.com/terms) 与 [NOTICE.md](NOTICE.md)。
-
-本仓库当前为专有发布，未经版权所有者书面许可不得再分发。Minecraft、网易和 Shadertoy 均为其各自权利人的名称或商标，本项目与它们没有隶属或背书关系。
+stdio MCP 必须直接使用 `node` 启动；不要用 `npm start` 等可能向 stdout 写横幅的包装器。静态分析、索引成功或单元测试通过，都不等于 GLSL 编译、网易 MCDK 测试或游戏内验收。实际 AddOn 仍要核实目标版本、真实资源入口、客户端/服务端边界和设备性能。

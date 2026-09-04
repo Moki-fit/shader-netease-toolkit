@@ -1,7 +1,7 @@
 interface:
   display_name: "Port Shadertoy to NetEase"
-  short_description: "Analyze, review, or port Shadertoy GLSL into NetEase"
-  default_prompt: "Use $port-shadertoy-to-netease to check the local Shadertoy library first, then analyze, review, or port the confirmed source through the correct NetEase Minecraft render route."
+  short_description: "Analyze approved shader sources and plan NetEase ports"
+  default_prompt: "Use $port-shadertoy-to-netease to resolve this shader or learning URL, verify its source policy, and plan a safe NetEase Minecraft port."
 
 policy:
   allow_implicit_invocation: true
